@@ -1,0 +1,835 @@
+{
+  "version": 1,
+  "seed": 1592651789,
+  "ss": 8,
+  "cases": [
+    {
+      "name": "fill_pentagon_rot_scale",
+      "kind": "fill",
+      "width": 96,
+      "height": 96,
+      "destMin": [
+        0,
+        0
+      ],
+      "paths": [
+        [
+          [
+            14.3,
+            18.7
+          ],
+          [
+            58.9,
+            12.1
+          ],
+          [
+            61.7,
+            47.3
+          ],
+          [
+            37.1,
+            62.9
+          ],
+          [
+            15.9,
+            44.2
+          ]
+        ]
+      ],
+      "matrix": [
+        1.1362071870936064,
+        0.5210885030365134,
+        -0.3751837221862897,
+        0.8180691747073966,
+        -9.081108333521971,
+        12.887991754268583
+      ],
+      "closed": true,
+      "tolerance": {
+        "EdgeBand": 1.5,
+        "EdgeTol": 0.55,
+        "FlatTol": 0.03,
+        "MinIoU": 0.99
+      },
+      "oracleDigest": "38374f0554459b371e7425b3f3ac98872c1324f5c7b62e3018d56cbb5d133957"
+    },
+    {
+      "name": "fill_pentagon_reflect",
+      "kind": "fill",
+      "width": 96,
+      "height": 96,
+      "destMin": [
+        0,
+        0
+      ],
+      "paths": [
+        [
+          [
+            14.3,
+            18.7
+          ],
+          [
+            58.9,
+            12.1
+          ],
+          [
+            61.7,
+            47.3
+          ],
+          [
+            37.1,
+            62.9
+          ],
+          [
+            15.9,
+            44.2
+          ]
+        ]
+      ],
+      "matrix": [
+        -0.9800665778412416,
+        -0.19866933079506122,
+        -0.19866933079506122,
+        0.9800665778412416,
+        104.57932361454255,
+        10.492932141783335
+      ],
+      "closed": true,
+      "tolerance": {
+        "EdgeBand": 1.5,
+        "EdgeTol": 0.55,
+        "FlatTol": 0.03,
+        "MinIoU": 0.99
+      },
+      "oracleDigest": "afce70e05c51535a828855a35428f7e867ae7de6041408ac909b577f7c185b99"
+    },
+    {
+      "name": "fill_ring_two_loops",
+      "kind": "fill",
+      "width": 100,
+      "height": 100,
+      "destMin": [
+        0,
+        0
+      ],
+      "paths": [
+        [
+          [
+            10,
+            10
+          ],
+          [
+            90,
+            10
+          ],
+          [
+            90,
+            90
+          ],
+          [
+            10,
+            90
+          ]
+        ],
+        [
+          [
+            30,
+            30
+          ],
+          [
+            30,
+            70
+          ],
+          [
+            70,
+            70
+          ],
+          [
+            70,
+            30
+          ]
+        ]
+      ],
+      "matrix": [
+        0.9204668006251124,
+        0.2350337612917968,
+        -0.2102933653663445,
+        0.823575558454048,
+        -14.491328237061602,
+        2.930465987292237
+      ],
+      "closed": true,
+      "tolerance": {
+        "EdgeBand": 1.5,
+        "EdgeTol": 0.55,
+        "FlatTol": 0.03,
+        "MinIoU": 0.99
+      },
+      "oracleDigest": "524c027d230d191d65c37fa5b71d97e9959e09a788f10f783a89325240d31b8b"
+    },
+    {
+      "name": "fill_random_hex_0",
+      "kind": "fill",
+      "width": 96,
+      "height": 96,
+      "destMin": [
+        0,
+        0
+      ],
+      "paths": [
+        [
+          [
+            76.71960172262551,
+            48
+          ],
+          [
+            54.73752832849683,
+            59.66974138239112
+          ],
+          [
+            35.379858090811695,
+            69.85872698544345
+          ],
+          [
+            26.521332843702183,
+            48
+          ],
+          [
+            39.75324044519823,
+            33.71619345327926
+          ],
+          [
+            61.20308277968731,
+            25.131589809043863
+          ]
+        ]
+      ],
+      "matrix": [
+        0.9620501309754382,
+        -0.4698136566463598,
+        0.6535189091822533,
+        1.3382283449605288,
+        29.547313927569192,
+        -6.316094960919884
+      ],
+      "closed": true,
+      "tolerance": {
+        "EdgeBand": 1.5,
+        "EdgeTol": 0.55,
+        "FlatTol": 0.03,
+        "MinIoU": 0.99
+      },
+      "oracleDigest": "7a2ac64764fe34c824c5377a453a4a019815ca9292d393178238beaf736ac996"
+    },
+    {
+      "name": "stroke_open_bevel",
+      "kind": "stroke",
+      "width": 120,
+      "height": 100,
+      "destMin": [
+        0,
+        0
+      ],
+      "paths": [
+        [
+          [
+            15,
+            55
+          ],
+          [
+            40,
+            20
+          ],
+          [
+            60,
+            55
+          ],
+          [
+            85,
+            22
+          ]
+        ]
+      ],
+      "matrix": [
+        1,
+        0,
+        0,
+        1,
+        0,
+        0
+      ],
+      "closed": false,
+      "strokeWidth": 9,
+      "join": "bevel",
+      "tolerance": {
+        "EdgeBand": 1.75,
+        "EdgeTol": 0.55,
+        "FlatTol": 0.03,
+        "MinIoU": 0.98
+      },
+      "oracleDigest": "33509dd29bfcc189197e6a100165b03e7c4fabbca1a2fcf5ef3dc44ba5c52c28"
+    },
+    {
+      "name": "stroke_open_miter_aniso",
+      "kind": "stroke",
+      "width": 150,
+      "height": 130,
+      "destMin": [
+        0,
+        0
+      ],
+      "paths": [
+        [
+          [
+            15,
+            75
+          ],
+          [
+            45,
+            30
+          ],
+          [
+            75,
+            80
+          ],
+          [
+            110,
+            35
+          ]
+        ]
+      ],
+      "matrix": [
+        1.1272472554168547,
+        0.4114773689465416,
+        -0.2743182459643611,
+        0.7514981702779031,
+        8.287141831419376,
+        -14.70818373905432
+      ],
+      "closed": false,
+      "strokeWidth": 10,
+      "join": "miter",
+      "tolerance": {
+        "EdgeBand": 1.75,
+        "EdgeTol": 0.55,
+        "FlatTol": 0.03,
+        "MinIoU": 0.98
+      },
+      "oracleDigest": "1d0f9550378d15bb2e10f1f644b62ed894ee9a77b62e36014169541000507956"
+    },
+    {
+      "name": "stroke_open_round",
+      "kind": "stroke",
+      "width": 120,
+      "height": 100,
+      "destMin": [
+        0,
+        0
+      ],
+      "paths": [
+        [
+          [
+            15,
+            55
+          ],
+          [
+            40,
+            20
+          ],
+          [
+            60,
+            55
+          ],
+          [
+            85,
+            22
+          ]
+        ]
+      ],
+      "matrix": [
+        0.9736663950053749,
+        0.2279775235351884,
+        -0.2279775235351884,
+        0.9736663950053749,
+        -7.391269404393427,
+        21.274750754693358
+      ],
+      "closed": false,
+      "strokeWidth": 9,
+      "join": "round",
+      "cap": "round",
+      "tolerance": {
+        "EdgeBand": 1.75,
+        "EdgeTol": 0.55,
+        "FlatTol": 0.03,
+        "MinIoU": 0.98
+      },
+      "oracleDigest": "6b584a2bcd6990f6fc92825b173685c327f31a0b526c4e5f9f8058d82a107401"
+    },
+    {
+      "name": "stroke_closed_miter",
+      "kind": "stroke",
+      "width": 150,
+      "height": 150,
+      "destMin": [
+        0,
+        0
+      ],
+      "paths": [
+        [
+          [
+            30,
+            30
+          ],
+          [
+            120,
+            35
+          ],
+          [
+            115,
+            120
+          ],
+          [
+            35,
+            115
+          ]
+        ]
+      ],
+      "matrix": [
+        1.0822280620669338,
+        0.1969325307684066,
+        -0.16112661608324177,
+        0.8854593235093093,
+        -5.917391551223091,
+        6.179389070828691
+      ],
+      "closed": true,
+      "strokeWidth": 9,
+      "join": "miter",
+      "tolerance": {
+        "EdgeBand": 1.75,
+        "EdgeTol": 0.55,
+        "FlatTol": 0.03,
+        "MinIoU": 0.98
+      },
+      "oracleDigest": "dafcf947f64f6d77f5c38e0e9e0191907913074b7ab52121010b0bba2c5a99b7"
+    },
+    {
+      "name": "stroke_closed_round",
+      "kind": "stroke",
+      "width": 150,
+      "height": 150,
+      "destMin": [
+        0,
+        0
+      ],
+      "paths": [
+        [
+          [
+            30,
+            30
+          ],
+          [
+            120,
+            35
+          ],
+          [
+            115,
+            120
+          ],
+          [
+            35,
+            115
+          ]
+        ]
+      ],
+      "matrix": [
+        1,
+        0,
+        0,
+        1,
+        0,
+        0
+      ],
+      "closed": true,
+      "strokeWidth": 9,
+      "join": "round",
+      "tolerance": {
+        "EdgeBand": 1.75,
+        "EdgeTol": 0.55,
+        "FlatTol": 0.03,
+        "MinIoU": 0.98
+      },
+      "oracleDigest": "38a02413987a165944547c69e331ef40e26b5966dc52bf6243c6295c5cb6e56f"
+    },
+    {
+      "name": "dash_open_butt",
+      "kind": "dash",
+      "width": 120,
+      "height": 60,
+      "destMin": [
+        0,
+        0
+      ],
+      "paths": [
+        [
+          [
+            10,
+            30
+          ],
+          [
+            100,
+            30
+          ]
+        ]
+      ],
+      "matrix": [
+        1,
+        0,
+        0,
+        1,
+        0,
+        0
+      ],
+      "closed": false,
+      "strokeWidth": 6,
+      "join": "bevel",
+      "pattern": [
+        10,
+        6
+      ],
+      "dashOffset": 3,
+      "tolerance": {
+        "EdgeBand": 1.75,
+        "EdgeTol": 0.55,
+        "FlatTol": 0.03,
+        "MinIoU": 0.98
+      },
+      "oracleDigest": "5a2f3f54f86e0eabf1795d74a32547231a456fc7ea96f0c286ad8b79b9f75dd8"
+    },
+    {
+      "name": "dash_open_round_polyline",
+      "kind": "dash",
+      "width": 140,
+      "height": 110,
+      "destMin": [
+        0,
+        0
+      ],
+      "paths": [
+        [
+          [
+            15.3,
+            60.7
+          ],
+          [
+            65.7,
+            30.3
+          ],
+          [
+            110.3,
+            70.7
+          ]
+        ]
+      ],
+      "matrix": [
+        0.9780309147241483,
+        0.20845989984609956,
+        -0.20845989984609956,
+        0.9780309147241483,
+        -5.628510160383399,
+        21.317986043227563
+      ],
+      "closed": false,
+      "strokeWidth": 7,
+      "join": "round",
+      "cap": "round",
+      "pattern": [
+        9,
+        5
+      ],
+      "dashOffset": 2,
+      "tolerance": {
+        "EdgeBand": 1.75,
+        "EdgeTol": 0.55,
+        "FlatTol": 0.03,
+        "MinIoU": 0.98
+      },
+      "oracleDigest": "66e0619f377ec00b969a10e80893afb4d5723464f71a7cc2f1720ad943bd045b"
+    },
+    {
+      "name": "dash_open_square_aniso",
+      "kind": "dash",
+      "width": 150,
+      "height": 130,
+      "destMin": [
+        0,
+        0
+      ],
+      "paths": [
+        [
+          [
+            15,
+            100
+          ],
+          [
+            120,
+            40
+          ]
+        ]
+      ],
+      "matrix": [
+        1.105273192803462,
+        0.31153467384692046,
+        -0.4673020107703806,
+        0.7368487952023081,
+        23.0055072038324,
+        -4.702598857434452
+      ],
+      "closed": false,
+      "strokeWidth": 9,
+      "join": "bevel",
+      "cap": "square",
+      "pattern": [
+        11,
+        7
+      ],
+      "dashOffset": 3,
+      "tolerance": {
+        "EdgeBand": 1.75,
+        "EdgeTol": 0.55,
+        "FlatTol": 0.03,
+        "MinIoU": 0.98
+      },
+      "oracleDigest": "755aca363cf862a28536de80e6e00ac9f9fdfe003a29512783fdfe6419198e50"
+    },
+    {
+      "name": "fill_tiny_triangle",
+      "kind": "fill",
+      "width": 20,
+      "height": 20,
+      "destMin": [
+        0,
+        0
+      ],
+      "paths": [
+        [
+          [
+            10.3,
+            10.7
+          ],
+          [
+            10.675,
+            10.7
+          ],
+          [
+            10.3,
+            11.075
+          ]
+        ]
+      ],
+      "matrix": [
+        1,
+        0,
+        0,
+        1,
+        0,
+        0
+      ],
+      "closed": true,
+      "tolerance": {
+        "EdgeBand": 1.5,
+        "EdgeTol": 0.6,
+        "FlatTol": 0.03,
+        "MinIoU": 0.5
+      },
+      "expectedMass": 0.0703125,
+      "expectedMassTol": 0.02,
+      "expectedBBox": [
+        10,
+        10,
+        10,
+        10
+      ],
+      "oracleDigest": "baa4c64a4b7c6481e79ac363e331bbaca46f1cef7b761b1cd9ecb8ac23c21dc8"
+    },
+    {
+      "name": "stroke_tiny_width",
+      "kind": "stroke",
+      "width": 60,
+      "height": 40,
+      "destMin": [
+        0,
+        0
+      ],
+      "paths": [
+        [
+          [
+            20.3,
+            20.7
+          ],
+          [
+            50.3,
+            20.7
+          ]
+        ]
+      ],
+      "matrix": [
+        1,
+        0,
+        0,
+        1,
+        0,
+        0
+      ],
+      "closed": false,
+      "strokeWidth": 0.75,
+      "join": "bevel",
+      "tolerance": {
+        "EdgeBand": 1.5,
+        "EdgeTol": 0.6,
+        "FlatTol": 0.06,
+        "MinIoU": 0.5
+      },
+      "expectedMass": 22.5,
+      "expectedMassTol": 0.5,
+      "oracleDigest": "de9ca03f4c52952eab364f3573df5b65913e4baf3eb044183f3e3990453ade93"
+    },
+    {
+      "name": "fill_nonzero_bounds",
+      "kind": "fill",
+      "width": 64,
+      "height": 56,
+      "destMin": [
+        13,
+        7
+      ],
+      "paths": [
+        [
+          [
+            14.3,
+            18.7
+          ],
+          [
+            58.9,
+            12.1
+          ],
+          [
+            61.7,
+            47.3
+          ],
+          [
+            37.1,
+            62.9
+          ],
+          [
+            15.9,
+            44.2
+          ]
+        ]
+      ],
+      "matrix": [
+        1,
+        0,
+        0,
+        1,
+        -6,
+        -6
+      ],
+      "closed": true,
+      "tolerance": {
+        "EdgeBand": 1.5,
+        "EdgeTol": 0.55,
+        "FlatTol": 0.03,
+        "MinIoU": 0.99
+      },
+      "oracleDigest": "a748bb6741d78cc15e80c1e8fd15c90b1bd826ee5cc1a4081ca5afb520253a9d"
+    },
+    {
+      "name": "fill_zero_area",
+      "kind": "fill",
+      "width": 30,
+      "height": 30,
+      "destMin": [
+        0,
+        0
+      ],
+      "paths": [
+        [
+          [
+            10,
+            10
+          ],
+          [
+            10,
+            10
+          ],
+          [
+            10,
+            10
+          ]
+        ]
+      ],
+      "matrix": [
+        1,
+        0,
+        0,
+        1,
+        0,
+        0
+      ],
+      "closed": true,
+      "tolerance": {
+        "EdgeBand": 1.5,
+        "EdgeTol": 0.6,
+        "FlatTol": 0.03,
+        "MinIoU": 0.5
+      },
+      "expectedMassTol": 0.001,
+      "oracleDigest": "09cec5a5bd8afffbb758753810a20c55ccb06a46d7bf54eda69ecd2ad645ef11"
+    },
+    {
+      "name": "stroke_zero_length_round",
+      "kind": "stroke",
+      "width": 60,
+      "height": 60,
+      "destMin": [
+        0,
+        0
+      ],
+      "paths": [
+        [
+          [
+            30,
+            30
+          ],
+          [
+            30,
+            30
+          ]
+        ]
+      ],
+      "matrix": [
+        1,
+        0,
+        0,
+        1,
+        0,
+        0
+      ],
+      "closed": false,
+      "strokeWidth": 8,
+      "join": "round",
+      "cap": "round",
+      "tolerance": {
+        "EdgeBand": 1.5,
+        "EdgeTol": 0.6,
+        "FlatTol": 0.06,
+        "MinIoU": 0.5
+      },
+      "expectedMass": 50.26548245743669,
+      "expectedMassTol": 1.2,
+      "oracleDigest": "e3a9fa3d7fdd197a23d4b2b4a74213a9f9b3ca2b76db5e545511e5d848eb32b5"
+    }
+  ]
+}

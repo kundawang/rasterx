@@ -82,3 +82,31 @@ If you want to use the freetype style antialiaser, 'go get' or clone into your w
 
 * github.com/srwiley/scanFT 
 
+
+## Deformation test suite
+
+The repository has no `go.mod` in its historical state; a minimal module file is
+included so `go test ./...` works offline against the vendored module cache:
+
+```sh
+GOFLAGS=-mod=mod GOPROXY=off GOSUMDB=off go test ./...
+```
+
+`rasterx_test.go`'s older tests only save PNGs for eyeballing, so a wrongly
+composed matrix or a mis-sized cap can still "look right". The deformation
+suite adds assertions that are independent of the renderer's own transform code:
+
+| File | Purpose |
+| --- | --- |
+| `deformation_ref_test.go` | Affine math, polygon winding, stroke outline, dash walker, coverage oracle, edge-aware comparison. Calls no rasterx geometry code. |
+| `deformation_fixtures_test.go` | Deterministic fixtures (`-update` regenerates) compared to the oracle with coverage and edge tolerances. |
+| `deformation_props_test.go` | Matrix composition laws, integer/sub-pixel translation equivariance, closed-path direction and hole winding, cap/join areas. |
+| `deformation_dash_test.go` | Dash period/offset/runs/reversal/closure, degenerate curves, sub-pixel contours, non-zero destination bounds. |
+| `mutation_test.go` | Copies the module to a temp dir, injects three defects, and requires the focused tests to fail. |
+
+Regenerate and verify the fixture:
+
+```sh
+go test -run '^TestDeformationFixturesMatchGenerator$' -update
+go test -run '^(TestDeformationFixtures|TestDeformationFixturesMatchGenerator)$'
+```
