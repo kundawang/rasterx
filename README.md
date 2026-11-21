@@ -82,3 +82,27 @@ If you want to use the freetype style antialiaser, 'go get' or clone into your w
 
 * github.com/srwiley/scanFT 
 
+## High-quality antialiasing (supersampling)
+
+The default `ScannerGV` resolves coverage once per output pixel. That is fast and area-accurate for ordinary geometry, but thin stroked icons and fine lines can look broken or "dashed" after scaling, because a partly covered pixel is rounded to one of few coverage levels. `ScannerSS` adds an optional, configurable high-quality mode based on grid (box) supersampling: the path is rasterized on an N×N finer grid with the same coverage engine, then the sample areas are averaged exactly back down to the destination resolution.
+
+The default output is unchanged. A quality of `1` delegates entirely to `ScannerGV` and is bit-identical to the pre-existing renderer; the new behavior is opt-in.
+
+```golang
+// quality is the number of samples per pixel along each axis.
+// 1 = identical to ScannerGV, higher values (up to MaxQuality = 8)
+// use quality*quality coverage samples per output pixel.
+scanner := rasterx.NewScannerSS(width, height, quality, dest, dest.Bounds())
+filler := rasterx.NewFiller(width, height, scanner)
+// ... build and draw exactly as before ...
+```
+
+Properties of the mode:
+
+* **Conserved area and alpha.** Down-sampling is an exact box average of coverage, so the total covered area is preserved and a translucent source keeps the same effective coverage regardless of quality. Integer translations move the image pixel-for-pixel rather than flickering.
+* **Applies to fills and strokes alike.** Because `ScannerSS` is a `Scanner`, it works with `NewFiller`, `NewStroker` and `NewDasher` unchanged, including caps, joins, dashes, gradients and color functions.
+* **Bounded resources.** Quality is clamped to `MaxQuality` (8, i.e. 64 samples/pixel) and, independently, to the largest quality whose high-resolution mask fits within `MaxHiResPixels`. On a large canvas the quality is lowered automatically instead of exhausting memory; query `EffectiveQuality()` for the value in use.
+* **Well-defined edge cases.** An empty path leaves the destination untouched, clipping restricts coverage exactly as with `ScannerGV`, zero/negative bounds render nothing, and non-zero destination origins place geometry at the correct absolute coordinates.
+
+Use `SetQuality` to change the sampling quality at runtime, and `Quality()` / `EffectiveQuality()` to inspect the requested and effective values. See `supersample_test.go` for the analytic edge-error reference, area/alpha conservation, flicker, resource-limit and origin/clip tests.
+
