@@ -507,6 +507,10 @@ func (r *Stroker) CubeBezier(b, c, d fixed.Point26_6) {
 
 // quadBezierf calcs end curvature of beziers
 func (r *Stroker) quadBezierf(s Rasterx, b, c fixed.Point26_6) {
+	if IsDegenerateQuad(r.a, b, c) {
+		s.Line(c)
+		return
+	}
 	r.trailPoint = r.leadPoint
 	r.CalcEndCurvature(r.a, b, c, c, b, r.a, fixed.Int52_12(2<<12), doCalcCurvature(s))
 	r.QuadBezierF(s, b, c)
@@ -529,7 +533,7 @@ func doCalcCurvature(r Rasterx) bool {
 }
 
 func (r *Stroker) cubeBezierf(sgm Rasterx, b, c, d fixed.Point26_6) {
-	if (r.a == b && c == d) || (r.a == b && b == c) || (c == b && d == c) {
+	if IsDegenerateCube(r.a, b, c, d) {
 		sgm.Line(d)
 		return
 	}
