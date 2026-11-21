@@ -67,6 +67,32 @@ filler := &dasher.Filler
 Now filler is a filling rasterizer. Please see rasterx_test.go for examples.
 
 
+## Gradients and singular transforms
+
+`Gradient.GetColorFunction` / `GetColorFunctionUS` build a `ColorFunc`
+from a gradient. A gradient transform taken from imported material may be
+singular (for example a zero scale) or contain non-finite coefficients. In
+that case the gradient cannot be sampled without producing NaN, so rasterx
+now degrades deterministically instead:
+
+* `Matrix2D.Invert` returns `(Matrix2D, error)` and never returns non-finite
+  coefficients. It reports `ErrNonFiniteMatrix` for NaN/Inf input and
+  `ErrSingularMatrix` for a zero, near-zero or ill-conditioned determinant.
+  Well-formed matrices invert exactly as before.
+* `Matrix2D.InvertOrIdentity` is a convenience for callers that prefer the
+  identity as a fallback; its second result reports success.
+* `Gradient.GetColorFunctionChecked` / `GetColorFunctionUSChecked` return the
+  error alongside the color function. On failure the returned `ColorFunc` is
+  still usable and paints the first stop, so a bad transform yields a flat
+  fill rather than undefined pixels. The unchecked methods keep their old
+  signatures and use the same fallback.
+
+The singularity test is scale independent: the determinant of the linear
+part is evaluated after normalizing each row, so ordinary rotations,
+scalings (including very large or very small uniform scales), shears and
+translations keep rendering as before, while transforms that collapse
+space to a line or a point are rejected.
+
 ### Non-standard library dependencies
 rasterx requires the following imports which are not included in the go standard library:
 
