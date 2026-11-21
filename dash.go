@@ -7,6 +7,23 @@ import (
 	"golang.org/x/image/math/fixed"
 )
 
+// DashMode selects how the dash pattern is applied to a path.
+type DashMode uint8
+
+const (
+	// DashModeDefault reproduces the original rasterx dash behavior: the dash
+	// pattern is streamed along every subpath, including closed ones, so a
+	// closed contour whose perimeter is not a whole number of dash periods
+	// ends with a truncated dash (a visible seam).
+	DashModeDefault DashMode = iota
+	// DashModeBalanceClosed redistributes the dashes of every *closed*
+	// subpath so an integer number of equal periods fills the subpath's
+	// perimeter. The pattern therefore joins symmetrically at the seam with
+	// neither a shortened dash nor a gap. Open subpaths and DashOffset keep
+	// their DashModeDefault behavior.
+	DashModeBalanceClosed
+)
+
 type Dasher struct {
 	Stroker
 	Dashes                    []fixed.Int26_6
@@ -16,7 +33,23 @@ type Dasher struct {
 	sgm                       Rasterx
 	// sgm allows us to switch between dashing
 	// and non-dashing rasterizers in the SetStroke function.
+
+	// Mode selects the dash placement strategy. The zero value is
+	// DashModeDefault, preserving the original behavior.
+	Mode DashMode
+
+	// Buffered subpath state used only in DashModeBalanceClosed.
+	buf       Path
+	bufOpen   bool
+	replaying bool // true while a buffered subpath is being stroked back
+	balDashes []fixed.Int26_6
 }
+
+// balDashEpsilon is the maximum accepted fixed-point mismatch (in
+// fixed.Int26_6 units) between a balanced pattern's accumulated period
+// lengths and the measured subpath perimeter. One unit is the resolution of
+// the fixed-point rasterizer itself.
+const balDashEpsilon = fixed.Int26_6(1)
 
 // joinF overides stroker joinF during dashed stroking, because we need to slightly modify
 // the the call as below to handle the case of the join being in a dash gap.
@@ -26,18 +59,37 @@ func (r *Dasher) joinF() {
 	}
 }
 
-func (r *Dasher) Start(a fixed.Point26_6) {
+// streamStart is the original streaming Dasher.Start implementation. Public
+// Start routes here directly, or via playPath after balancing a buffered
+// closed subpath.
+func (r *Dasher) streamStart(a fixed.Point26_6) {
 	// Advance dashPlace to the dashOffset start point and set deltaDash
 	if len(r.Dashes) > 0 {
 		r.deltaDash = r.DashOffset
 		r.dashIsGap = false
 		r.dashPlace = 0
+		// Skip zero-length entries so a (possibly negative or folded)
+		// offset cannot stall the state machine on an entry of length 0.
+		for r.Dashes[r.dashPlace] <= 0 {
+			r.dashIsGap = !r.dashIsGap
+			r.dashPlace++
+			if r.dashPlace == len(r.Dashes) {
+				r.dashPlace = 0
+			}
+		}
 		for r.deltaDash > r.Dashes[r.dashPlace] {
 			r.deltaDash -= r.Dashes[r.dashPlace]
 			r.dashIsGap = !r.dashIsGap
 			r.dashPlace++
 			if r.dashPlace == len(r.Dashes) {
 				r.dashPlace = 0
+			}
+			for r.Dashes[r.dashPlace] <= 0 {
+				r.dashIsGap = !r.dashIsGap
+				r.dashPlace++
+				if r.dashPlace == len(r.Dashes) {
+					r.dashPlace = 0
+				}
 			}
 		}
 		r.firstDashIsGap = r.dashIsGap
@@ -92,8 +144,22 @@ func (r *Dasher) SetStroke(width, miterLimit fixed.Int26_6, capL, capT CapFunc, 
 		} else {
 			r.Dashes = r.Dashes[:len(dashes)]
 		}
+		anyPositive := false
 		for i, v := range dashes {
-			r.Dashes[i] = fixed.Int26_6(v * 64)
+			fv := fixed.Int26_6(v * 64)
+			r.Dashes[i] = fv
+			if fv > 0 {
+				anyPositive = true
+			}
+		}
+		if !anyPositive {
+			// A pattern whose entries are all zero or negative has no
+			// period length. Treat it as a solid stroke deterministically
+			// instead of letting the dash state machine spin on zero-length
+			// entries. The caller's slice is never modified.
+			r.Dashes = r.Dashes[:0]
+			r.sgm = &r.Stroker
+			return
 		}
 		r.DashOffset = fixed.Int26_6(dashOffset * 64)
 		r.sgm = r
@@ -103,7 +169,8 @@ func (r *Dasher) SetStroke(width, miterLimit fixed.Int26_6, capL, capT CapFunc, 
 	}
 }
 
-func (r *Dasher) Stop(isClosed bool) {
+// streamStop is the original streaming Dasher.Stop implementation.
+func (r *Dasher) streamStop(isClosed bool) {
 	if len(r.Dashes) == 0 {
 		r.Stroker.Stop(isClosed)
 		return
@@ -160,13 +227,22 @@ func (r *Dasher) dashLineStrokeBit(b, bnorm fixed.Point26_6, dontClose bool) {
 	r.ln = bnorm
 }
 
-// Line for Dasher is here to pass the dasher sgm to LineP
+// Line for Dasher is here to pass the dasher sgm to LineP, unless the
+// subpath is being buffered for closed-subpath dash balancing.
 func (r *Dasher) Line(b fixed.Point26_6) {
+	if r.dashBuffering() && r.bufOpen {
+		r.buf.Line(b)
+		return
+	}
 	r.LineSeg(r.sgm, b)
 }
 
-// QuadBezier for dashing
+// QuadBezier for dashing (or buffering in balancing mode)
 func (r *Dasher) QuadBezier(b, c fixed.Point26_6) {
+	if r.dashBuffering() && r.bufOpen {
+		r.buf.QuadBezier(b, c)
+		return
+	}
 	r.quadBezierf(r.sgm, b, c)
 }
 
@@ -174,6 +250,10 @@ func (r *Dasher) QuadBezier(b, c fixed.Point26_6) {
 // It is a low level function exposed for the purposes of callbacks
 // and debugging.
 func (r *Dasher) CubeBezier(b, c, d fixed.Point26_6) {
+	if r.dashBuffering() && r.bufOpen {
+		r.buf.CubeBezier(b, c, d)
+		return
+	}
 	r.cubeBezierf(r.sgm, b, c, d)
 }
 
