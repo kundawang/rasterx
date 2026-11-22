@@ -80,5 +80,24 @@ These can be included in your gopath by the following 'get' commands:
 
 If you want to use the freetype style antialiaser, 'go get' or clone into your workspace the scanFT package:
 
-* github.com/srwiley/scanFT 
+* github.com/srwiley/scanFT
+
+### Path metrics
+
+A path can be measured independently of any rasterizer with `NewPathMeasure` (or the `Path.Measure` convenience method). The measure breaks the path into its constituent lines, quadratic and cubic Beziers and explicit close segments using rules that are separate from the Filler/Stroker/Dasher scanner, integrates every segment's arc length with a fixed-order Gauss-Legendre rule (lines are exact), and answers queries parameterized by distance rather than the curve's `t` parameter, so an icon can be moved at constant speed along a spline.
+
+```golang
+m, err := rasterx.NewPathMeasure(p)   // err is non-nil only for a malformed path
+total := m.LengthF()                  // total arc length in user units (float64)
+x, y, tx, ty := m.PointAtF(d)         // point and unit tangent at distance d
+fp, ftan := m.PointAt(distanceFixed)  // fixed point variants (Int26_6)
+```
+
+Semantics:
+
+* Negative distances clamp to the path start and distances past the total clamp to its end; checked variants (`PointAtFChecked`, `PointAtChecked`) return `ErrInvalidDistance` for a NaN/infinite distance and `ErrZeroLengthPath` for an empty or all-zero-length path.
+* `CumulativeLengths` / `CumulativeLengthsF` return the cumulative arc length at every segment boundary, including zero-length and close segments. Closed sub-paths include their closing segment and each sub-path contributes independently.
+* The solver uses a bounded Newton/bisection search over a per-segment lookup table, so cusps, large curvature and extreme coordinates cannot cause unbounded subdivision; non-finite coordinates are rejected with `ErrNonFiniteCoordinate`.
+* Measurements are read-only: the source `Path`, and any `Stroker` or `Dasher`, are never modified, and a measure is safe for concurrent queries once constructed.
+
 
