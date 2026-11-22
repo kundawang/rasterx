@@ -47,6 +47,12 @@ const (
 	PathQuadTo
 	PathCubicTo
 	PathClose
+	// PathStop is an explicit end-of-subpath marker. It is only emitted by
+	// RecordedPath, never by a regular Path. Recording Stop separately is
+	// required so that open subpaths (including their end caps when
+	// stroking) can be replayed identically: an implicit PathClose can not
+	// express Stop(false).
+	PathStop
 )
 
 // A Path starts with a PathCommand value followed by zero to three fixed
@@ -78,6 +84,10 @@ func (p Path) ToSVGPath() string {
 		case PathClose:
 			s += "Z"
 			i++
+		case PathStop:
+			// Explicit open/closed subpath end used by Snapshotter; it has no
+			// SVG token of its own (a close flag is encoded separately).
+			i += 2
 		default:
 			panic("freetype/rasterx: bad pather")
 		}
@@ -143,6 +153,11 @@ func (p Path) AddTo(q Adder) {
 		case PathClose:
 			q.Stop(true)
 			i++
+		case PathStop:
+			// Replay the recorded open/closed end exactly; without this the
+			// end caps of open stroked subpaths would be lost.
+			q.Stop(p[i+1] != 0)
+			i += 2
 		default:
 			panic("AddTo: bad path")
 		}

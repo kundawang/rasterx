@@ -82,3 +82,53 @@ If you want to use the freetype style antialiaser, 'go get' or clone into your w
 
 * github.com/srwiley/scanFT 
 
+
+## Drawing state snapshots (save / restore)
+
+When rendering nested nodes, a child commonly changes the transform matrix,
+clip rectangle, paint, stroke and dash parameters of a shared rasterizer. If
+the child fails partway through, restoring those fields by hand is error prone
+and—because the scanner's accumulated mask has no public getter—the in-progress
+parent path cannot be rebuilt at all.
+
+`Snapshotter` wraps a `*Filler`, `*Stroker` or `*Dasher` and replaces that
+manual pattern with an explicit snapshot protocol. Paths are fed through the
+`Snapshotter` (it is itself an `Adder`), so every command is recorded in user
+coordinates and replayed on restore to rebuild the mask deterministically.
+
+```golang
+keeper, err := rasterx.NewSnapshotter(dasher)
+if err != nil { /* unsupported or nil rasterizer */ }
+
+snap, err := keeper.Save()      // immutable, read-only DrawState
+if err != nil { /* ErrEmptyState, ErrNonFiniteMatrix, ... */ }
+
+keeper.SetMatrix(childMatrix)   // child rendering, possibly failing
+keeper.SetClip(childClip)
+keeper.SetColor(childColor)
+childPath.AddTo(keeper)
+
+if err := renderChild(); err != nil {
+    return keeper.Restore()     // ordered rollback of every parameter and mask
+}
+return keeper.Restore()         // restore is also valid after success
+```
+
+Properties of the protocol:
+
+* A `DrawState` is immutable and safe to retain and read from any goroutine.
+  Every slice (path, dashes, gradient stops) is an independent deep copy, so a
+  snapshot never aliases caller-owned or live rasterizer storage.
+* `Save`/`Restore`/`RestoreTo`/`Discard` maintain a LIFO stack; restoring a
+  buried snapshot returns `ErrRestoreOrder` without touching live state.
+* Explicit, typed errors cover snapshot version mismatch (`ErrSnapshotVersion`),
+  foreign ownership (`ErrSnapshotForeign`), double release
+  (`ErrSnapshotReleased`), empty state (`ErrEmptyState`), non-finite matrices
+  (`ErrNonFiniteMatrix`), stack underflow (`ErrEmptySnapshotStack`) and a panic
+  during path replay (`ErrRestoreFailed`, which also clears the scanner so no
+  partial mask or temporary image survives).
+* All mutating `Snapshotter` methods are internally synchronized; retained
+  snapshots are read-only and may be shared across goroutines.
+
+See `state_test.go` for parity fixtures comparing the snapshot pipeline against
+both uninterrupted golden renders and the old manual step-by-step pattern.

@@ -166,6 +166,9 @@ func (s *ScannerGV) SetBounds(width, height int) {
 	s.r.Reset(width, height)
 }
 
+// Size returns the current rasterizer width and height in pixels.
+func (s *ScannerGV) Size() image.Point { return s.r.Size() }
+
 // NewScannerGV creates a new Scanner with the given bounds.
 func NewScannerGV(width, height int, dest draw.Image,
 	targ image.Rectangle) *ScannerGV {
