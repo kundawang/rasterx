@@ -82,3 +82,53 @@ If you want to use the freetype style antialiaser, 'go get' or clone into your w
 
 * github.com/srwiley/scanFT 
 
+## Hit testing
+
+A vector editor needs to know whether the mouse is over a thin stroke or a
+filled region without rendering the whole canvas first. rasterx answers these
+pick queries geometrically through the `HitTester`, built with
+`NewHitTester(path, transform, stroke, options)`.
+
+The tester reuses the exact same `Filler`/`Stroker`/`Dasher` pipeline that
+rendering uses, so cap, join, miter-limit, dash and curve-flattening rules are
+identical to a drawn image. Instead of rasterizing, a geometry-only `Scanner`
+records the directed edge set produced by that pipeline; point and rectangle
+queries then resolve it with the same winding rules as the rasterizer.
+
+* `HitPoint(x, y, pixelThreshold)` returns a `HitResult` for a single device
+  point: the hit `Source` (`HitFill`, `HitStroke` or both), binary coverage,
+  the signed distance to each boundary (negative inside, zero on the edge,
+  positive outside) and the summed winding count. A non-zero pixel threshold
+  grows the pickable region around thin strokes without changing coverage.
+* `HitPointF` is the fixed-point (`fixed.Point26_6`) convenience wrapper.
+* `HitRect(rect, pixelThreshold, options)` supersamples a rectangle (up to
+  128x128 samples) and returns the fill and stroke area coverage plus a
+  thresholded hit decision.
+
+Queries are read-only: they never modify the source path or any scanner
+state, and a single `HitTester` serves concurrent queries. `HitOptions`
+selects the non-zero (default) or even-odd fill rule, a clip rectangle and
+the rectangle sampling grid. Boundary tangency is defined deterministically
+(the exact edge counts as inside); holes follow the selected winding rule;
+paint alpha is ignored because it changes color, not geometry. Empty paths
+never hit, while non-finite coordinates, a singular transform and over-limit
+stroke widths return the documented sentinel errors
+(`ErrHitNonFinite`, `ErrHitSingular`, `ErrHitLimit`, ...).
+
+```golang
+stroke := &StrokeConfig{
+    Width: 2 << 6, MiterLimit: 4 << 6,
+    CapL: RoundCap, CapT: RoundCap, Gap: RoundGap, Join: ArcClip,
+    Dashes: []fixed.Int26_6{20 << 6, 8 << 6}, // omit for a solid stroke
+}
+tester, err := NewHitTester(path, Identity, stroke, HitOptions{})
+if err != nil { /* envelope / non-finite / singular input */ }
+res, err := tester.HitPoint(mouseX, mouseY, 2.0) // 2 px pick tolerance
+switch {
+case res.StrokeHit(): // over the stroked outline
+case res.FillHit():   // over the filled interior
+default:              // outside the shape
+}
+```
+
+
