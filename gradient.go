@@ -54,6 +54,18 @@ func ApplyOpacity(c color.Color, opacity float64) color.NRGBA {
 func (g *Gradient) tColor(t, opacity float64) color.Color {
 	d := len(g.Stops)
 	// These cases can be taken care of early on
+	if d == 0 {
+		// GetColorFunction rejects stopless gradients, but tColor is reachable
+		// through a color function captured before Stops was changed. Return
+		// the documented error color rather than indexing an empty slice.
+		return ApplyOpacity(color.RGBA{255, 0, 255, 255}, opacity)
+	}
+	if !isFinite(t) {
+		// A non-finite parameter cannot select a position; use the first
+		// stop so the raster stays defined.
+		s := g.Stops[0]
+		return ApplyOpacity(s.StopColor, s.Opacity*opacity)
+	}
 	if t >= 1.0 && g.Spread == PadSpread {
 		s := g.Stops[d-1]
 		return ApplyOpacity(s.StopColor, s.Opacity*opacity)
@@ -155,6 +167,13 @@ func (g *Gradient) GetColorFunction(opacity float64) interface{} {
 	case 1:
 		return ApplyOpacity(g.Stops[0].StopColor, opacity) // Illegal, I think, should really should not happen.
 	}
+	for _, s := range g.Stops {
+		if !isFinite(s.Offset) || !isFinite(s.Opacity) {
+			// A non-finite stop would poison the binary search and every
+			// blend below. Paint the first usable stop instead.
+			return ApplyOpacity(g.Stops[0].StopColor, g.Stops[0].Opacity)
+		}
+	}
 
 	// sort by offset in ascending order
 	sort.Slice(g.Stops, func(i, j int) bool {
@@ -163,6 +182,15 @@ func (g *Gradient) GetColorFunction(opacity float64) interface{} {
 
 	w, h := float64(g.Bounds.W), float64(g.Bounds.H)
 	oriX, oriY := float64(g.Bounds.X), float64(g.Bounds.Y)
+	if w == 0 || h == 0 || !isFinite(w) || !isFinite(h) {
+		// A zero-area or non-finite bounding box makes the inverse transform
+		// below undefined (division by zero / NaN). A gradient without a
+		// usable box paints a flat color.
+		s := g.Stops[len(g.Stops)-1]
+		return ColorFunc(func(xi, yi int) color.Color {
+			return ApplyOpacity(s.StopColor, s.Opacity*opacity)
+		})
+	}
 	gradT := Identity.Translate(oriX, oriY).Scale(w, h).
 		Mult(g.Matrix).Scale(1/w, 1/h).Translate(-oriX, -oriY).Invert()
 
@@ -181,11 +209,24 @@ func (g *Gradient) GetColorFunction(opacity float64) interface{} {
 				x, y := gradT.Transform(float64(xi)+0.5, float64(yi)+0.5)
 				dx := float64(x) - cx
 				dy := float64(y) - cy
-				return g.tColor(math.Sqrt(dx*dx/(rx*rx)+dy*dy/(ry*ry)), opacity)
+				t := math.Sqrt(dx*dx/(rx*rx) + dy*dy/(ry*ry))
+				if math.IsNaN(t) {
+					t = 0
+				}
+				return g.tColor(t, opacity)
 			})
 		} else {
 			fx := g.Bounds.X + g.Bounds.W*g.Points[2]
 			fy := g.Bounds.Y + g.Bounds.H*g.Points[3]
+
+			if rx == 0 || ry == 0 || !isFinite(rx) || !isFinite(ry) {
+				// A zero radius has no interior; paint the last stop rather
+				// than dividing by zero.
+				s := g.Stops[len(g.Stops)-1]
+				return ColorFunc(func(xi, yi int) color.Color {
+					return ApplyOpacity(s.StopColor, s.Opacity*opacity)
+				})
+			}
 
 			//Scale
 			fx /= rx
@@ -234,6 +275,15 @@ func (g *Gradient) GetColorFunction(opacity float64) interface{} {
 		dx := p2x - p1x
 		dy := p2y - p1y
 		d := (dx*dx + dy*dy) // self inner prod
+		if d == 0 || !isFinite(d) {
+			// Coincident points or a non-finite vector would divide by zero.
+			// Fall back to the last stop, matching the radial branch's
+			// behaviour when its parameterization is undefined.
+			s := g.Stops[len(g.Stops)-1]
+			return ColorFunc(func(xi, yi int) color.Color {
+				return ApplyOpacity(s.StopColor, s.Opacity*opacity)
+			})
+		}
 		return ColorFunc(func(xi, yi int) color.Color {
 			x, y := gradT.Transform(float64(xi)+0.5, float64(yi)+0.5)
 			dfx := x - p1x

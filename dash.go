@@ -1,5 +1,5 @@
 // Copyright 2017 by the rasterx Authors. All rights reserved.
-//_
+// _
 // created: 2017 by S.R.Wiley
 package rasterx
 
@@ -13,7 +13,21 @@ type Dasher struct {
 	dashPlace                 int
 	firstDashIsGap, dashIsGap bool
 	deltaDash, DashOffset     fixed.Int26_6
-	sgm                       Rasterx
+	dashIters                 int
+	// savedDashes holds the pattern configured by SetStroke so a path that
+	// abandons dashing (see DashLimitErr) does not disable dashing for later
+	// paths.
+	savedDashes []fixed.Int26_6
+	savedOffset fixed.Int26_6
+	// DashLimitErr records that a dash pattern was abandoned because it
+	// exceeded MaxDashIterations. The path is still rendered, as a solid
+	// stroke, so output remains stable.
+	DashLimitErr error
+	// IterationLimit overrides MaxDashIterations for this Dasher when
+	// positive. Tests set it low to drive the fallback deterministically;
+	// production code leaves it zero.
+	IterationLimit int
+	sgm            Rasterx
 	// sgm allows us to switch between dashing
 	// and non-dashing rasterizers in the SetStroke function.
 }
@@ -27,11 +41,19 @@ func (r *Dasher) joinF() {
 }
 
 func (r *Dasher) Start(a fixed.Point26_6) {
+	if r.DashLimitErr != nil && len(r.savedDashes) > 0 {
+		// Retry the configured pattern on a new path, even though a previous
+		// path abandoned it.
+		r.DashLimitErr = nil
+		r.restoreDashes()
+	}
 	// Advance dashPlace to the dashOffset start point and set deltaDash
 	if len(r.Dashes) > 0 {
 		r.deltaDash = r.DashOffset
 		r.dashIsGap = false
 		r.dashPlace = 0
+		r.dashIters = 0
+		iters := 0
 		for r.deltaDash > r.Dashes[r.dashPlace] {
 			r.deltaDash -= r.Dashes[r.dashPlace]
 			r.dashIsGap = !r.dashIsGap
@@ -39,10 +61,52 @@ func (r *Dasher) Start(a fixed.Point26_6) {
 			if r.dashPlace == len(r.Dashes) {
 				r.dashPlace = 0
 			}
+			iters++
+			if iters > r.iterationLimit() {
+				// A hostile or degenerate pattern (for example a very large
+				// offset against very short dashes) would otherwise spin here
+				// forever. Fall back to a solid stroke.
+				r.abandonDashes(ErrTooManyDashIterations)
+				break
+			}
 		}
 		r.firstDashIsGap = r.dashIsGap
 	}
 	r.Stroker.Start(a)
+}
+
+// iterationLimit returns the transition budget for this Dasher.
+func (r *Dasher) iterationLimit() int {
+	if r.IterationLimit > 0 {
+		return r.IterationLimit
+	}
+	return MaxDashIterations
+}
+
+// abandonDashes turns the current Dasher into a solid stroker and records the
+// reason. The configured pattern is kept in savedDashes and reinstated by the
+// next SetStroke, so abandoning one over-long path does not permanently
+// disable dashing for the session.
+func (r *Dasher) abandonDashes(err error) {
+	r.DashLimitErr = err
+	r.Dashes = r.Dashes[:0]
+	r.sgm = &r.Stroker
+	r.dashIters = 0
+}
+
+// restoreDashes reinstates a pattern abandoned by abandonDashes.
+func (r *Dasher) restoreDashes() {
+	if len(r.savedDashes) == 0 {
+		return
+	}
+	if cap(r.Dashes) < len(r.savedDashes) {
+		r.Dashes = make([]fixed.Int26_6, len(r.savedDashes))
+	} else {
+		r.Dashes = r.Dashes[:len(r.savedDashes)]
+	}
+	copy(r.Dashes, r.savedDashes)
+	r.DashOffset = r.savedOffset
+	r.sgm = r
 }
 
 // lineF overides stroker lineF to modify the the call as below
@@ -64,6 +128,12 @@ func (r *Dasher) lineF(b fixed.Point26_6) {
 	}
 	for segLen+r.deltaDash > r.Dashes[r.dashPlace] {
 		nl := r.Dashes[r.dashPlace] - r.deltaDash
+		if nl < 0 {
+			// A negative entry would make no progress and the loop would
+			// never terminate. ValidateDashes rejects these; treat an
+			// unvalidated one as exhausted instead of spinning.
+			nl = 0
+		}
 		nlt += nl
 		r.dashLineStrokeBit(a.Add(ToLength(ba, nlt)), bnorm, false)
 		r.dashIsGap = !r.dashIsGap
@@ -72,6 +142,15 @@ func (r *Dasher) lineF(b fixed.Point26_6) {
 		r.dashPlace++
 		if r.dashPlace == len(r.Dashes) {
 			r.dashPlace = 0
+		}
+		r.dashIters++
+		if r.dashIters > r.iterationLimit() {
+			// Sub-pixel or zero-length patterns can require an unbounded
+			// number of transitions on a long segment. Stop dashing this
+			// path and fall back to a solid line.
+			r.abandonDashes(ErrTooManyDashIterations)
+			r.Stroker.lineF(b)
+			return
 		}
 	}
 	r.deltaDash += segLen
@@ -85,7 +164,8 @@ func (r *Dasher) lineF(b fixed.Point26_6) {
 // the dash pattern. Pass in nil or an empty slice for no dashes. dashoffset is the starting offset into the dash array.
 func (r *Dasher) SetStroke(width, miterLimit fixed.Int26_6, capL, capT CapFunc, gp GapFunc, jm JoinMode, dashes []float64, dashOffset float64) {
 	r.Stroker.SetStroke(width, miterLimit, capL, capT, gp, jm)
-	if len(dashes) > 0 { // Dashed Stroke
+	patternsValid := ValidateDashes(dashes, dashOffset) == nil
+	if len(dashes) > 0 && patternsValid {
 		// Convert the float dash array and offset to fixed point and attach to the Filler
 		if len(dashes) > len(r.Dashes) {
 			r.Dashes = make([]fixed.Int26_6, len(dashes))
@@ -93,13 +173,18 @@ func (r *Dasher) SetStroke(width, miterLimit fixed.Int26_6, capL, capT CapFunc, 
 			r.Dashes = r.Dashes[:len(dashes)]
 		}
 		for i, v := range dashes {
-			r.Dashes[i] = fixed.Int26_6(v * 64)
+			r.Dashes[i] = SanitizeDashValue(v)
 		}
 		r.DashOffset = fixed.Int26_6(dashOffset * 64)
 		r.sgm = r
+		r.savedDashes = append(r.savedDashes[:0], r.Dashes...)
+		r.savedOffset = r.DashOffset
+		r.DashLimitErr = nil
 	} else {
 		r.Dashes = r.Dashes[:0] // clear the dash array
 		r.sgm = &r.Stroker      // This is just plain stroking
+		r.savedDashes = r.savedDashes[:0]
+		r.savedOffset = 0
 	}
 }
 

@@ -82,3 +82,57 @@ If you want to use the freetype style antialiaser, 'go get' or clone into your w
 
 * github.com/srwiley/scanFT 
 
+
+## Malformed input safety
+
+`rasterx` normally receives geometry from a trusted parser. When the input
+crosses a trust boundary (for example an SVG uploaded by a user) the
+coordinates, control points, dash pattern and gradient stops can be arbitrary.
+The package treats that case as a first-class concern:
+
+* Coordinates are bounded by `SafeCoordLimit` (2^24 in 26.6 fixed units, i.e.
+  262144 pixels). Larger or non-representable points are rejected rather than
+  wrapped.
+* `QuadTo` / `CubeTo` cap the flattened segment count per curve, so an extreme
+  control point cannot explode into an unbounded amount of work.
+* `Dasher` rejects zero-length, negative, non-finite and oversized dash
+  patterns, and abandons a pattern (falling back to a solid stroke) if it would
+  need more than `MaxDashIterations` transitions. The reason is recorded in
+  `Dasher.DashLimitErr`.
+* Degenerate geometry functions such as `RadCurvature`, `CalcIntersect`,
+  `RayCircleIntersectionF`, `AddArc` and the gradient color functions return a
+  defined value for co-linear, parallel or non-finite input instead of
+  dividing by zero.
+* `ScannerGV` saturates coordinates and refuses rasterizer bounds it cannot
+  address.
+
+Use the checked entry points to turn malformed input into an error:
+
+```golang
+// Reference checker: parses the path without invoking a rasterizer.
+report := rasterx.AnalyzePath(path, rasterx.DefaultLimits())
+if report.Err != nil {
+    log.Printf("bad path at %s: %v", report.FailureStage, report.Err)
+}
+
+// AddToChecked forwards a valid path exactly as AddTo does, but reports a
+// malformed command instead of panicking.
+if err := path.AddToChecked(filler); err != nil { ... }
+
+// GuardAdder / GuardScanner wrap an existing rasterizer and count the
+// commands, flattened lines and extent while validating.
+guarded := rasterx.NewGuardAdder(filler)
+```
+
+`Path.AddTo` keeps its original signature; it now stops at the first malformed
+command instead of panicking.
+
+The test suite fixes a seed (`fuzzSeed` in `fuzz_test.go`) and generates a
+corpus covering non-finite points, zero and negative lengths, huge
+coordinates, recursive curves, abnormal miters, empty gradient stops and huge
+dash arrays. Every sample runs under a time, allocation and output budget.
+For a longer, mutation-driven run:
+
+```bash
+go test -run '^$' -fuzz FuzzMalformedPath -fuzztime 30s
+```

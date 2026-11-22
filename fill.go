@@ -1,12 +1,11 @@
 // Copyright 2018 by the rasterx Authors. All rights reserved.
-//_
+// _
 // Created 2017 by S.R.Wiley
 package rasterx
 
 import (
 	"image"
 	"image/color"
-	"math"
 
 	"golang.org/x/image/math/fixed"
 )
@@ -87,8 +86,7 @@ func devSquaredFx(ax, ay, bx, by, cx, cy fixed.Int26_6) fixed.Int26_6 {
 func QuadTo(ax, ay, bx, by, cx, cy float32, LineTo func(dx, dy float32)) {
 	devsq := devSquared(ax, ay, bx, by, cx, cy)
 	if devsq >= 0.333 {
-		const tol = 3
-		n := 1 + int(math.Sqrt(math.Sqrt(tol*float64(devsq))))
+		n := flatteningCount(float64(devsq))
 		t, nInv := float32(0), 1/float32(n)
 		for i := 0; i < n-1; i++ {
 			t += nInv
@@ -114,8 +112,7 @@ func CubeTo(ax, ay, bx, by, cx, cy, dx, dy float32, LineTo func(ex, ey float32))
 		devsq = devsqAlt
 	}
 	if devsq >= 0.333 {
-		const tol = 3
-		n := 1 + int(math.Sqrt(math.Sqrt(tol*float64(devsq))))
+		n := flatteningCount(float64(devsq))
 		t, nInv := float32(0), 1/float32(n)
 		for i := 0; i < n-1; i++ {
 			t += nInv

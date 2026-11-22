@@ -35,7 +35,14 @@ func DotProd(p fixed.Point26_6, q fixed.Point26_6) fixed.Int52_12 {
 // Magnitiude of the point
 func Length(v fixed.Point26_6) fixed.Int26_6 {
 	vx, vy := float64(v.X), float64(v.Y)
-	return fixed.Int26_6(math.Sqrt(vx*vx + vy*vy))
+	d := math.Sqrt(vx*vx + vy*vy)
+	if math.IsNaN(d) || d > float64(math.MaxInt32) {
+		// Only reachable for sums of coordinates near the int32 limits,
+		// which the guard rejects, but Length is exported. Saturate rather
+		// than return a negative or implementation-defined value.
+		return fixed.Int26_6(math.MaxInt32)
+	}
+	return fixed.Int26_6(d)
 }
 
 type PathCommand fixed.Int26_6
@@ -52,6 +59,14 @@ const (
 // A Path starts with a PathCommand value followed by zero to three fixed
 // int points.
 type Path []fixed.Int26_6
+
+// Validate reports the first structural problem in the path: an unknown
+// command, a truncated operand list, or a coordinate outside SafeCoordLimit.
+// It does not invoke any rasterizer.
+func (p Path) Validate() error {
+	rep := AnalyzePath(p, DefaultLimits())
+	return rep.Err
+}
 
 func (p Path) ToSVGPath() string {
 	s := ""
@@ -123,30 +138,12 @@ func (p *Path) Stop(closeLoop bool) {
 
 // AddPath adds the Path p to q.
 func (p Path) AddTo(q Adder) {
-	for i := 0; i < len(p); {
-		switch PathCommand(p[i]) {
-		case PathMoveTo:
-			q.Stop(false) // Fixes issues #1 by described by Djadala; implict close if currently in path.
-			q.Start(fixed.Point26_6{p[i+1], p[i+2]})
-			i += 3
-		case PathLineTo:
-			q.Line(fixed.Point26_6{p[i+1], p[i+2]})
-			i += 3
-		case PathQuadTo:
-			q.QuadBezier(fixed.Point26_6{p[i+1], p[i+2]}, fixed.Point26_6{p[i+3], p[i+4]})
-			i += 5
-		case PathCubicTo:
-			q.CubeBezier(fixed.Point26_6{p[i+1], p[i+2]},
-				fixed.Point26_6{p[i+3], p[i+4]}, fixed.Point26_6{p[i+5], p[i+6]})
-			i += 7
-		case PathClose:
-			q.Stop(true)
-			i += 1
-		default:
-			panic("AddTo: bad path")
-		}
+	if err := p.AddToChecked(q); err != nil {
+		// AddToChecked stops at the malformed command and returns the
+		// reason; AddTo keeps its historical signature and still leaves the
+		// rasterizer in a consistent state.
+		return
 	}
-	q.Stop(false)
 }
 
 func ToLength(p fixed.Point26_6, ln fixed.Int26_6) (q fixed.Point26_6) {
@@ -154,7 +151,14 @@ func ToLength(p fixed.Point26_6, ln fixed.Int26_6) (q fixed.Point26_6) {
 		return
 	}
 	lp := Length(p)
-	q.X, q.Y = p.X*ln/lp, p.Y*ln/lp
+	if lp == 0 {
+		return
+	}
+	// Widen before multiplying: p.X*ln can exceed Int26_6 for the largest
+	// coordinates the guard accepts, and silently wrapping would turn a
+	// rejected direction into an arbitrary one.
+	q.X = fixed.Int26_6(int64(p.X) * int64(ln) / int64(lp))
+	q.Y = fixed.Int26_6(int64(p.Y) * int64(ln) / int64(lp))
 	return
 }
 
@@ -179,6 +183,9 @@ func ClosestPortside(bow, stern, p1, p2 fixed.Point26_6, isIntersecting bool) (x
 		return p1, true
 	default: // both points on port side
 		dirdot := DotProd(dir, dir)
+		if dirdot == 0 { // bow == stern; the direction is undefined
+			return p1, true
+		}
 		// calculate vector rejections of dp1 and dp2 onto dir
 		h1 := dp1.Sub(dir.Mul(fixed.Int26_6((DotProd(dp1, dir) << 6) / dirdot)))
 		h2 := dp2.Sub(dir.Mul(fixed.Int26_6((DotProd(dp2, dir) << 6) / dirdot)))
@@ -197,11 +204,26 @@ func ClosestPortside(bow, stern, p1, p2 fixed.Point26_6, isIntersecting bool) (x
 func RadCurvature(p0, p1, p2 fixed.Point26_6, dm fixed.Int52_12) fixed.Int26_6 {
 	a, b := p2.Sub(p1), p1.Sub(p0)
 	abdot, bbdot := DotProd(a, b), DotProd(b, b)
+	if bbdot == 0 { // p0 == p1: the tangent is undefined, curvature is zero
+		return 0
+	}
 	h := a.Sub(b.Mul(fixed.Int26_6((abdot << 6) / bbdot))) // h is the vector rejection of a onto b
 	if h.X == 0 && h.Y == 0 {                              // points are co-linear
 		return 0
 	}
-	radCurve := fixed.Int26_6((fixed.Int52_12(a.X*a.X+a.Y*a.Y) * dm / fixed.Int52_12(Length(h)<<6)) >> 6)
+	hLen := Length(h)
+	if hLen == 0 { // h can round to zero for nearly co-linear points
+		return 0
+	}
+	// Widen both factors: a.X*a.X and the dm product overflow Int52_12 for
+	// coordinates the guard accepts, and a wrapped value is worse than a
+	// saturated one.
+	aa := int64(a.X)*int64(a.X) + int64(a.Y)*int64(a.Y)
+	den := int64(hLen) << 6
+	if den == 0 {
+		return 0
+	}
+	radCurve := fixed.Int26_6((fixed.Int52_12(aa) * dm / fixed.Int52_12(den)) >> 6)
 	if a.X*b.Y > b.X*a.Y { // xprod sign
 		return radCurve
 	}
@@ -222,6 +244,9 @@ func CircleCircleIntersection(ct, cl fixed.Point26_6, rt, rl fixed.Int26_6) (xt1
 	if da := rt - rl; (da > 0 && d < da) || (da < 0 && d < -da) {
 		return // No solution. One circle is contained by the other.
 	}
+	if d == 0 { // same centers and same radius (identical circles)
+		return
+	}
 
 	rlf, rtf, df := float64(rl), float64(rt), float64(d)
 	af := (rtf*rtf - rlf*rlf + df*df) / df / 2.0
@@ -237,14 +262,24 @@ func CircleCircleIntersection(ct, cl fixed.Point26_6, rt, rl fixed.Int26_6) (xt1
 		fixed.Point26_6{fixed.Int26_6(xt2x), fixed.Int26_6(xt2y)}, true
 }
 
-// CalcIntersect calculates the points of intersection of two fixed point lines
-// and panics if the determinate is zero. You have been warned.
+// CalcIntersect calculates the points of intersection of two fixed point lines.
+// If the lines are parallel (or the inputs are not finite) it returns the
+// midpoint of the first line instead of dividing by zero, so callers always
+// get a usable point.
 func CalcIntersect(a1, a2, b1, b2 fixed.Point26_6) (x fixed.Point26_6) {
 	da, db, ds := a2.Sub(a1), b2.Sub(b1), a1.Sub(b1)
 	det := float32(da.X*db.Y - db.X*da.Y) // Determinate
+	if det == 0 || math.IsNaN(float64(det)) {
+		// Midpoint computed in int64 so two large same-sign coordinates
+		// cannot overflow before the halving.
+		return fixed.Point26_6{
+			X: fixed.Int26_6((int64(a1.X) + int64(a2.X)) / 2),
+			Y: fixed.Int26_6((int64(a1.Y) + int64(a2.Y)) / 2)}
+	}
 	t := float32(ds.Y*db.X-ds.X*db.Y) / det
-	x = a1.Add(fixed.Point26_6{fixed.Int26_6(float32(da.X) * t), fixed.Int26_6(float32(da.Y) * t)})
-	return
+	return a1.Add(fixed.Point26_6{
+		X: clampInt26(float64(float32(da.X) * t)),
+		Y: clampInt26(float64(float32(da.Y) * t))})
 }
 
 // RayCircleIntersection calculates the points of intersection of
@@ -264,6 +299,11 @@ func RayCircleIntersection(s1, s2, c fixed.Point26_6, r fixed.Int26_6) (x fixed.
 // Returns intersects == false if no solution is possible. If two
 // solutions are possible, the point closest to s2 is returned
 func RayCircleIntersectionF(s1X, s1Y, s2X, s2Y, cX, cY, r float64) (x, y float64, intersects bool) {
+	for _, v := range [...]float64{s1X, s1Y, s2X, s2Y, cX, cY, r} {
+		if !isFinite(v) {
+			return 0, 0, false
+		}
+	}
 	n := s2X - cX // Calculating using 64* rather than divide
 	m := s2Y - cY
 
@@ -275,6 +315,11 @@ func RayCircleIntersectionF(s1X, s1Y, s2X, s2Y, cX, cY, r float64) (x, y float64
 
 	D := B*B - 4*A*C
 
+	if !isFinite(A) || !isFinite(D) || A == 0 {
+		// Degenerate ray (s1 == s2) or overflow; no well-defined single
+		// intersection to report.
+		return 0, 0, false
+	}
 	if D <= 0 {
 		return // No intersection or is tangent
 	}

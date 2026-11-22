@@ -111,23 +111,63 @@ func (s *ScannerGV) set(a fixed.Point26_6) {
 	}
 }
 
+// clampCoord converts a 26.6 coordinate to the float32 the backing
+// rasterizer consumes, saturating at SafeCoordLimit. The rasterizer's fixed
+// point path scales by 512 internally, so values beyond the guard's limit
+// would overflow its int32 accumulator.
+func clampCoord(v fixed.Int26_6) float32 {
+	return float32(clampSafeInt26(float64(v))) / 64
+}
+
+// clampPoint saturates both coordinates at SafeCoordLimit.
+func clampPoint(p fixed.Point26_6) fixed.Point26_6 {
+	return fixed.Point26_6{
+		X: clampSafeInt26(float64(p.X)),
+		Y: clampSafeInt26(float64(p.Y))}
+}
+
 // Start starts a new path at the given point.
 func (s *ScannerGV) Start(a fixed.Point26_6) {
+	a = clampPoint(a)
 	s.set(a)
-	s.r.MoveTo(float32(a.X)/64, float32(a.Y)/64)
+	s.r.MoveTo(clampCoord(a.X), clampCoord(a.Y))
 }
 
 // Line adds a linear segment to the current curve.
 func (s *ScannerGV) Line(b fixed.Point26_6) {
+	b = clampPoint(b)
 	s.set(b)
-	s.r.LineTo(float32(b.X)/64, float32(b.Y)/64)
+	s.r.LineTo(clampCoord(b.X), clampCoord(b.Y))
 }
 
 func (s *ScannerGV) Draw() {
+	if s.Dest == nil {
+		// Nothing to draw into. Reporting through the scanner is not
+		// possible here (Draw has no error return), so simply do nothing
+		// rather than panicking in the vector rasterizer.
+		return
+	}
 	// This draws the entire bounds of the image, because
 	// at this point the alpha mask does not shift with the
-	// placement of the target rectangle in the vector rasterizer
-	s.r.Draw(s.Dest, s.Dest.Bounds(), s.Source, s.Offset)
+	// placement of the target rectangle in the vector rasterizer.
+	//
+	// The alpha mask has exactly size.X*size.Y entries, indexed from zero
+	// for the rectangle handed to Draw. A destination larger than the
+	// rasterizer would therefore index past the mask. Clamp the rectangle to
+	// the mask size so an oversized or mismatched destination cannot write
+	// out of bounds.
+	r := s.Dest.Bounds()
+	sz := s.r.Size()
+	if r.Dx() > sz.X {
+		r.Max.X = r.Min.X + sz.X
+	}
+	if r.Dy() > sz.Y {
+		r.Max.Y = r.Min.Y + sz.Y
+	}
+	if r.Empty() {
+		return
+	}
+	s.r.Draw(s.Dest, r, s.Source, s.Offset)
 
 	// Remove the line above and uncomment the lines below if you
 	// are using a version of the vector rasterizer that shifts the alpha
@@ -151,7 +191,12 @@ func (s *ScannerGV) Clear() {
 
 // SetBounds sets the maximum width and height of the rasterized image and
 // calls Clear. The width and height are in pixels, not fixed.Int26_6 units.
+// Bounds the backing rasterizer cannot address are discarded (the scanner
+// keeps its previous size) instead of allocating an impossible buffer.
 func (s *ScannerGV) SetBounds(width, height int) {
+	if !ValidRasterizerBounds(width, height) {
+		return
+	}
 	s.r.Reset(width, height)
 }
 

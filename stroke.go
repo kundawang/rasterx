@@ -48,6 +48,12 @@ type (
 
 		JoinMode JoinMode
 		inStroke bool
+
+		// ParamErr records that the last SetStroke call received invalid
+		// parameters. The stroke is still configured with clamped values so
+		// rendering stays stable, but callers can inspect this to reject the
+		// input.
+		ParamErr error
 	}
 )
 
@@ -93,6 +99,14 @@ func NewStroker(width, height int, scanner Scanner) *Stroker {
 // gp is the gap function that determines how a gap on the convex side of two joining lines is filled. jm is the JoinMode
 // for curve segments.
 func (r *Stroker) SetStroke(width, miterLimit fixed.Int26_6, capL, capT CapFunc, gp GapFunc, jm JoinMode) {
+	r.ParamErr = ValidateStroke(width, miterLimit)
+	width = SafeStrokeWidth(width)
+	if miterLimit < 0 {
+		miterLimit = 0
+	}
+	if miterLimit > SafeCoordLimit {
+		miterLimit = SafeCoordLimit
+	}
 	r.u = width / 2
 	r.CapL = capL
 	r.CapT = capT
@@ -561,7 +575,7 @@ func (r *Stroker) Line(b fixed.Point26_6) {
 	r.LineSeg(r, b)
 }
 
-//LineSeg is called by both the Stroker and Dasher
+// LineSeg is called by both the Stroker and Dasher
 func (r *Stroker) LineSeg(sgm Rasterx, b fixed.Point26_6) {
 	r.trailPoint = r.leadPoint
 	ba := b.Sub(r.a)

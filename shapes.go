@@ -1,5 +1,5 @@
 // Copyright 2018 by the rasterx Authors. All rights reserved.
-//_
+// _
 // created: 2/06/2018 by S.R.Wiley
 // Functions that rasterize common shapes easily.
 package rasterx
@@ -93,6 +93,23 @@ func AddRoundRect(minX, minY, maxX, maxY, rx, ry, rot float64, gf GapFunc, p Add
 }
 
 func AddArc(points []float64, cx, cy, px, py float64, p Adder) (lx, ly float64) {
+	if len(points) < 7 {
+		return px, py
+	}
+	for _, v := range append(append([]float64{}, points...), cx, cy, px, py) {
+		if !isFinite(v) {
+			// A non-finite arc cannot be approximated. Emit nothing so the
+			// caller's path stays at its current point instead of panicking
+			// or producing a path with NaN coordinates.
+			return px, py
+		}
+	}
+	if points[0] == 0 || points[1] == 0 {
+		// Zero radius ellipse: emit a straight line to the end point, which
+		// is what the SVG spec requires.
+		p.Line(ToFixedP(points[5], points[6]))
+		return points[5], points[6]
+	}
 	rotX := points[2] * math.Pi / 180 // Convert degress to radians
 	largeArc := points[3] != 0
 	sweep := points[4] != 0
@@ -174,6 +191,13 @@ func ellipsePointAt(a, b, sinTheta, cosTheta, eta, cx, cy float64) (px, py float
 // and an arbitrary point. The center of the circle is then transformed
 // back to the original coordinates and returned.
 func FindEllipseCenter(ra, rb *float64, rotX, startX, startY, endX, endY float64, sweep, smallArc bool) (cx, cy float64) {
+	if ra == nil || rb == nil || *ra == 0 || *rb == 0 ||
+		!isFinite(*ra) || !isFinite(*rb) || !isFinite(rotX) ||
+		!isFinite(startX) || !isFinite(startY) || !isFinite(endX) || !isFinite(endY) {
+		// Degenerate radii or non-finite inputs have no meaningful center;
+		// returning the start point keeps callers inside finite coordinates.
+		return startX, startY
+	}
 	cos, sin := math.Cos(rotX), math.Sin(rotX)
 
 	// Move origin to start point
