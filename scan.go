@@ -42,6 +42,13 @@ type (
 		Source                 image.Image
 		Offset                 image.Point
 		minX, minY, maxX, maxY fixed.Int26_6 // keep track of bounds
+
+		// clips is the path/mask clip stack pushed with PushClipPath and
+		// PushClipMask. It is independent of clipImage, the single
+		// rectangular clip configured by SetClip.
+		clips        []*clipLayer
+		clipsLimit   ClipLimits
+		clipsMemUsed int // bytes retained for owned clip coverage
 	}
 )
 
@@ -138,7 +145,13 @@ func (s *ScannerGV) Draw() {
 	// This draws the entire bounds of the image, because
 	// at this point the alpha mask does not shift with the
 	// placement of the target rectangle in the vector rasterizer
-	s.r.Draw(s.Dest, s.Dest.Bounds(), s.Source, s.Offset)
+	src := s.Source
+	if len(s.clips) > 0 {
+		// Snapshot the stack so this Draw is unaffected by later pushes or
+		// pops, and so the rasterizer never observes a mutating source.
+		src = &clippedImage{src: src, level: s.clipSnapshot()}
+	}
+	s.r.Draw(s.Dest, s.Dest.Bounds(), src, s.Offset)
 
 	// Remove the line above and uncomment the lines below if you
 	// are using a version of the vector rasterizer that shifts the alpha
@@ -164,6 +177,9 @@ func (s *ScannerGV) Clear() {
 // calls Clear. The width and height are in pixels, not fixed.Int26_6 units.
 func (s *ScannerGV) SetBounds(width, height int) {
 	s.r.Reset(width, height)
+	// Clip coverage is rasterized for the old bounds, so it is no longer
+	// valid. Spell this out rather than silently drawing at the wrong size.
+	s.resetClips()
 }
 
 // NewScannerGV creates a new Scanner with the given bounds.

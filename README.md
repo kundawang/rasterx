@@ -66,6 +66,41 @@ filler := &dasher.Filler
 ```
 Now filler is a filling rasterizer. Please see rasterx_test.go for examples.
 
+### Clipping
+
+ScannerGV supports a single rectangular clip through `SetClip`. For nested
+scene graph clips (a circular avatar mask followed by a UI rectangle, say) it
+also implements the `ClipScanner` interface:
+
+```golang
+scanner := rasterx.NewScannerGV(w, h, img, img.Bounds())
+
+// A circular clip from a path, optionally transformed by a Matrix2D.
+scanner.PushClipPath(func(a rasterx.Adder) error {
+	rasterx.AddCircle(120, 120, 80, a)
+	return nil
+})
+// A second, independent rectangle clip: coverage of the two multiplies.
+scanner.PushClipPath(func(a rasterx.Adder) error {
+	rasterx.AddRect(60, 40, 260, 200, 0, a)
+	return nil
+})
+
+path.AddTo(filler) // draw through both clips
+filler.Draw()
+
+scanner.PopClip() // back to the circle only
+scanner.PopClip() // back to no path clip
+```
+
+`PushClipMask` clips from the alpha channel of any `image.Image`. Masks are
+read-only, shared safely, and use the same coordinates as clip paths. A push
+that fails (an error from the callback, an empty path, or a resource limit)
+leaves the stack and later draws exactly as they were. The stack is bounded by
+`ClipLimits` (depth, pixels per layer, and memory), and `SetClip` keeps its
+original single-rectangle behaviour and composes with the stack as an
+intersection.
+
 
 ### Non-standard library dependencies
 rasterx requires the following imports which are not included in the go standard library:
