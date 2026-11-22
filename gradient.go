@@ -133,7 +133,7 @@ func (g *Gradient) blendStops(t, opacity float64, s1, s2 *GradStop, flip bool) c
 		}
 	}
 	if s2.Offset == s1off {
-		return ApplyOpacity(s2.StopColor, s2.Opacity)
+		return ApplyOpacity(s2.StopColor, s2.Opacity*opacity)
 	}
 	if flip {
 		t = 1 - t
@@ -149,6 +149,18 @@ func (g *Gradient) blendStops(t, opacity float64, s1, s2 *GradStop, flip bool) c
 		0xFF}, (s1.Opacity*(1-tp)+s2.Opacity*tp)*opacity)
 }
 
+// sortStopsByOffset sorts stops by offset in ascending order.
+func sortStopsByOffset(stops []*GradStop) {
+	sort.Slice(stops, func(i, j int) bool {
+		return stops[i].Offset < stops[j].Offset
+	})
+}
+
+// GetColorFunction returns a color source for the gradient. For two or
+// more stops the per-pixel stop interpolation is served by a cached,
+// read-only lookup table (see gradient_lut.go); the table is a snapshot
+// of the gradient at call time, so later changes to the Gradient only
+// take effect on the next GetColorFunction call.
 func (g *Gradient) GetColorFunction(opacity float64) interface{} {
 	switch len(g.Stops) {
 	case 0:
@@ -157,11 +169,35 @@ func (g *Gradient) GetColorFunction(opacity float64) interface{} {
 		return ApplyOpacity(g.Stops[0].StopColor, opacity) // Illegal, I think, should really should not happen.
 	}
 
-	// sort by offset in ascending order
-	sort.Slice(g.Stops, func(i, j int) bool {
-		return g.Stops[i].Offset < g.Stops[j].Offset
-	})
+	lut := gradientLUTFor(g, opacity)
+	return g.colorFunc(lut.at, lut.last)
+}
 
+// getColorFunctionUncached is the pre-LUT code path: it evaluates the
+// stop interpolation for every pixel. It is kept for benchmarks and as
+// the reference implementation for the LUT equivalence tests.
+func (g *Gradient) getColorFunctionUncached(opacity float64) interface{} {
+	switch len(g.Stops) {
+	case 0:
+		return ApplyOpacity(color.RGBA{255, 0, 255, 255}, opacity)
+	case 1:
+		return ApplyOpacity(g.Stops[0].StopColor, opacity)
+	}
+
+	// sort by offset in ascending order
+	sortStopsByOffset(g.Stops)
+
+	last := g.Stops[len(g.Stops)-1]
+	lastColor := ApplyOpacity(last.StopColor, last.Opacity*opacity)
+	return g.colorFunc(func(t float64) color.NRGBA {
+		return toNRGBA(g.tColor(t, opacity))
+	}, lastColor)
+}
+
+// colorFunc builds the per-pixel color function. at maps a gradient
+// parameter t to a color (LUT-backed or direct), and last is the color
+// used where the radial evaluation falls back to the final stop.
+func (g *Gradient) colorFunc(at func(t float64) color.NRGBA, last color.NRGBA) interface{} {
 	w, h := float64(g.Bounds.W), float64(g.Bounds.H)
 	oriX, oriY := float64(g.Bounds.X), float64(g.Bounds.Y)
 	gradT := Identity.Translate(oriX, oriY).Scale(w, h).
@@ -182,7 +218,7 @@ func (g *Gradient) GetColorFunction(opacity float64) interface{} {
 				x, y := gradT.Transform(float64(xi)+0.5, float64(yi)+0.5)
 				dx := float64(x) - cx
 				dy := float64(y) - cy
-				return g.tColor(math.Sqrt(dx*dx/(rx*rx)+dy*dy/(ry*ry)), opacity)
+				return at(math.Sqrt(dx*dx/(rx*rx) + dy*dy/(ry*ry)))
 			})
 		} else {
 			fx := g.Bounds.X + g.Bounds.W*g.Points[2]
@@ -213,16 +249,14 @@ func (g *Gradient) GetColorFunction(opacity float64) interface{} {
 
 				t1x, t1y, intersects := RayCircleIntersectionF(ex, ey, fx, fy, cx, cy, 1.0)
 				if intersects == false { //In this case, use the last stop color
-					s := g.Stops[len(g.Stops)-1]
-					return ApplyOpacity(s.StopColor, s.Opacity*opacity)
+					return last
 				}
 				tdx, tdy := t1x-fx, t1y-fy
 				dx, dy := ex-fx, ey-fy
 				if tdx*tdx+tdy*tdy < epsilonF {
-					s := g.Stops[len(g.Stops)-1]
-					return ApplyOpacity(s.StopColor, s.Opacity*opacity)
+					return last
 				}
-				return g.tColor(math.Sqrt(dx*dx+dy*dy)/math.Sqrt(tdx*tdx+tdy*tdy), opacity)
+				return at(math.Sqrt(dx*dx+dy*dy) / math.Sqrt(tdx*tdx+tdy*tdy))
 			})
 		}
 	} else {
@@ -239,7 +273,7 @@ func (g *Gradient) GetColorFunction(opacity float64) interface{} {
 			x, y := gradT.Transform(float64(xi)+0.5, float64(yi)+0.5)
 			dfx := x - p1x
 			dfy := y - p1y
-			return g.tColor((dx*dfx+dy*dfy)/d, opacity)
+			return at((dx*dfx + dy*dfy) / d)
 		})
 	}
 }
