@@ -82,3 +82,47 @@ If you want to use the freetype style antialiaser, 'go get' or clone into your w
 
 * github.com/srwiley/scanFT 
 
+
+## Stroke outline export
+
+A `Stroker`/`Dasher` normally rasterizes a stroke immediately, discarding its
+outline. `StrokeOutline` instead returns the stroke as an editable, fillable
+`Path` by running the same stroking machinery into an `OutlineScanner`, which
+captures the flattened `Start`/`Line` geometry rather than scanning pixels.
+
+```go
+cfg := StrokeConfig{
+    Width: 10 * 64, MiterLimit: 4 * 64,
+    CapL: rasterx.RoundCap, CapT: rasterx.RoundCap,
+    Gap: rasterx.RoundGap, Join: rasterx.ArcClip,
+    // Dashes: []float64{33, 12}, DashOffset: 0, // optional
+}
+var m *Matrix2D // optional transform; nil for identity
+outline, err := rasterx.StrokeOutline(srcPath, cfg, m)
+if err != nil { /* invalid width/miter/dash/matrix parameter */ }
+
+// Replay the outline straight into a scanner (a *Filler satisfies Scanner).
+f := rasterx.NewFiller(width, height, scanner)
+outline.AddToScanner(f.Scanner)
+scanner.Draw()
+```
+
+The outline is the exact geometry the stroker would have drawn, so filling it
+is pixel-for-pixel identical to the original stroke. Straight segments,
+quadratic and cubic beziers, dashing, all cap/gap functions and every join
+mode (miter, miter-clip, bevel, round, arc, arc-clip) are supported, along with
+`Matrix2D` transforms, negative coordinates, sub-pixel widths and transparent
+brushes.
+
+Contours are delimited with `PathMoveTo` and closed implicitly by the
+rasterizer on the next move. Replay them with `Path.AddToScanner` (or the
+one-step `FillStrokeOutline`), **not** `Path.AddTo`: the latter routes through
+a `Filler` whose `Stop` adds an explicit edge back to each contour start, which
+doubles the thin connecting edges and changes the rasterized coverage.
+`SplitSubPaths` reports each contour with its closure and `SignedArea` gives
+its orientation.
+
+Invalid inputs are signalled with an error (`ErrInvalidParam`,
+`ErrDashOffset`, `ErrMiterOverflow`) instead of overflowing; an empty path or
+zero width degrades stably to an empty outline. The source path, dash slice and
+caller-supplied scanner are never modified.
