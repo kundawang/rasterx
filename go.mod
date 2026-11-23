@@ -1,0 +1,7 @@
+module github.com/srwiley/rasterx
+
+go 1.26.8
+
+require golang.org/x/image v0.48.0
+
+require golang.org/x/sys v0.50.0 // indirect
