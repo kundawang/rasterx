@@ -67,6 +67,49 @@ filler := &dasher.Filler
 Now filler is a filling rasterizer. Please see rasterx_test.go for examples.
 
 
+## Bounds queries
+
+`bounds.go` provides tight coverage rectangles so a canvas can repaint only the region a transformed path actually covers, instead of its whole area. The queries are pure: they never modify the `Path`, `MatrixAdder`, `Stroker` or `Dasher` passed to them.
+
+```golang
+// Fill coverage from analytic curve extrema (quadratic/cubic derivative roots),
+// with the matrix applied exactly as a MatrixAdder would apply it.
+fillRect, err := rasterx.FillBounds(p, m)
+
+// Stroke coverage accounting for width, cap, join and miter limit, plus an
+// optional dash pattern and phase. Width and dashes are in transformed
+// device space, matching Stroker.SetStroke behind a MatrixAdder.
+strokeRect, err := rasterx.StrokeBounds(p, m, rasterx.StrokeStyle{
+    Width:       10,
+    MiterLimit:  4,
+    Cap:         rasterx.CapRound,
+    JoinMode:    rasterx.MiterClip,
+    Dashes:      []float64{33, 12},
+    DashOffset:  0,
+})
+
+// Integer pixels actually touched, intersected with a clip rectangle.
+dirty := rasterx.PixelCover(strokeRect, &clip)
+```
+
+For paths generated incrementally there is a streaming `BoundsAdder`
+(constructed with `NewBoundsAdder`) that implements the `Adder` interface and
+accumulates the same analytic fill bounds; it can itself be wrapped in a
+`MatrixAdder`.
+
+Guarantees and edge cases:
+
+* Negative coordinates, closed paths, negative dash phases and non-zero
+  translated minima are all handled exactly; rectangles are rounded outward
+  onto the `Int26_6` grid so no covered pixel is missed.
+* Near-zero-curvature curves fall back to their endpoints via a relative
+  epsilon; miter excursions are bounded by the miter limit and an explicit
+  `miterRatioClamp` upper bound.
+* A singular (non-invertible) matrix or any NaN/infinite parameter returns a
+  sentinel error (`ErrSingularMatrix`, `ErrNonFinite`, ...); values outside
+  the fixed-point range return `ErrValueOverflow` together with a clamped
+  conservative rectangle.
+
 ### Non-standard library dependencies
 rasterx requires the following imports which are not included in the go standard library:
 
